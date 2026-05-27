@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Week 9 — Building LLM Systems: MCP and A2A</title>
+  <style>
+    :root {
+      --bg: #f7f4ee;
+      --ink: #0f172a;
+      --muted: #475569;
+      --accent: #b85042;
+      --panel: #ffffff;
+      --line: #ddd7ce;
+      --dark: #1f2a44;
+      --dark-muted: #d6dcee;
+      --code-bg: #0b1220;
+      --code-fg: #e5e7eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Aptos", "Trebuchet MS", sans-serif;
+      background:
+        radial-gradient(1200px 700px at -20% -10%, #efe5d7 0, transparent 60%),
+        radial-gradient(800px 600px at 120% 0%, #ead2bf 0, transparent 50%),
+        var(--bg);
+      color: var(--ink);
+    }
+    .deck {
+      max-width: 1100px;
+      margin: 32px auto;
+      padding: 0 20px 40px;
+      display: grid;
+      gap: 24px;
+    }
+    .slide {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+      overflow: hidden;
+      transform: translateY(8px);
+      opacity: 0;
+      animation: reveal 0.55s ease forwards;
+    }
+    .slide:nth-child(n) { animation-delay: 60ms; }
+    .slide:nth-child(2n) { animation-delay: 120ms; }
+    .slide:nth-child(3n) { animation-delay: 180ms; }
+    @keyframes reveal {
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .band {
+      height: 10px;
+      background: linear-gradient(90deg, #b85042, #d7816d, #b85042);
+    }
+    .content {
+      padding: 24px 28px 28px;
+    }
+    h1, h2 {
+      margin: 0;
+      line-height: 1.2;
+      letter-spacing: 0.2px;
+    }
+    h1 {
+      font-size: clamp(1.6rem, 2.2vw, 2.2rem);
+      color: var(--ink);
+    }
+    h2 {
+      font-size: clamp(1.3rem, 1.8vw, 1.7rem);
+      color: var(--ink);
+    }
+    .subtitle {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 1.02rem;
+    }
+    .tagline {
+      margin-top: 18px;
+      color: var(--dark-muted);
+      font-size: 0.95rem;
+    }
+    .impact {
+      margin-top: 16px;
+      border-left: 5px solid var(--accent);
+      background: #fdf9f4;
+      padding: 14px 16px;
+      border-radius: 8px;
+    }
+    .impact h3 {
+      margin: 0 0 8px;
+      color: #8f3f34;
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    ul {
+      margin: 0;
+      padding-left: 20px;
+      color: #1f2937;
+      line-height: 1.55;
+    }
+    li + li { margin-top: 4px; }
+    .cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .col {
+      background: #fdf9f4;
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .col h3 {
+      margin: 0 0 8px;
+      color: #8f3f34;
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    table {
+      margin-top: 16px;
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th {
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+    tbody tr:nth-child(even) td { background: #faf6ee; }
+    pre {
+      margin: 16px 0 0;
+      background: var(--code-bg);
+      color: var(--code-fg);
+      border-radius: 10px;
+      padding: 16px 18px;
+      overflow-x: auto;
+      font-family: Consolas, "JetBrains Mono", "Courier New", monospace;
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+    code { font-family: inherit; }
+    .note {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-style: italic;
+    }
+    .closing {
+      margin-top: 16px;
+      color: var(--dark-muted);
+      font-style: italic;
+    }
+    .dark {
+      background: var(--dark);
+      color: #fff;
+      border-color: #253251;
+    }
+    .dark .subtitle,
+    .dark ul,
+    .dark .col {
+      color: var(--dark-muted);
+    }
+    .dark .impact {
+      background: #253251;
+      border-left-color: #e7e8d1;
+    }
+    .dark .impact h3 { color: #e7e8d1; }
+    .dark .impact ul li { color: #fff; }
+    .dark-impact ul li { color: #fff; }
+    .dark th { background: #b85042; }
+    .dark td { color: #fff; }
+    .cover h1 { color: #fff; font-size: clamp(2rem, 3vw, 2.6rem); }
+    .cover .subtitle { color: var(--accent); font-weight: 600; font-size: 1.2rem; }
+    .divider h1 { color: #fff; font-size: clamp(2rem, 3vw, 2.6rem); }
+    .divider .subtitle { color: #e7e8d1; }
+    @media (max-width: 720px) {
+      .deck { margin: 16px auto; padding: 0 12px 24px; gap: 14px; }
+      .content { padding: 18px; }
+      .cols { grid-template-columns: 1fr; }
+      table { font-size: 0.86rem; }
+      th, td { padding: 8px 10px; }
+    }
+    @media print {
+      body { background: #fff; }
+      .deck { gap: 0; margin: 0; max-width: none; padding: 0; }
+      .slide { page-break-after: always; box-shadow: none; border-radius: 0; opacity: 1; transform: none; animation: none; border: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck">
+<section class="slide dark cover"><div class="band"></div><div class="content">
+    <h1>Week 9 — Building LLM Systems</h1>
+    <p class="subtitle">MCP Servers and A2A</p>
+    <p class="tagline">CSC 394 — Software Projects · DePaul University</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Today's Agenda</h2>
+    <p class="subtitle">From &quot;why a protocol?&quot; to &quot;ship one for your capstone.&quot;</p>
+    <div class="impact">
+      <h3>Roadmap</h3>
+      <ul><li>Why LLM tooling needs protocols — the M × N problem</li><li>MCP concepts: roles, primitives, lifecycle</li><li>Implementing an MCP server (how-to + best practices)</li><li>MCP in Claude Code, Copilot, ChatGPT</li><li>MCP Apps — when tools need a UI</li><li>A2A concepts, implementation, best practices</li><li>MCP vs. A2A — how they stack</li><li>Demo: connect a working MCP server to Copilot</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>The M × N Integration Problem</h2>
+    <p class="subtitle">Every host re-implements every connector. Every backend re-implements every host plugin.</p>
+    <div class="impact">
+      <h3>Same problem these protocols solved</h3>
+      <ul><li>HTTP — for browsers and web servers</li><li>LSP — for editors and language tools</li><li>ODBC / JDBC — for apps and databases</li><li>MCP — for LLM apps and their tools/data</li><li>A2A — for agents collaborating across stacks</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Two Complementary Protocols</h2>
+    <p class="subtitle">They solve different halves of the problem. Real systems use both.</p>
+    <table>
+      <thead><tr><th></th><th>MCP</th><th>A2A</th></tr></thead>
+      <tbody><tr><td>Announced</td><td>Anthropic, Nov 2024</td><td>Google, Apr 2025</td></tr><tr><td>Connects</td><td>LLM app ↔ tools &amp; data</td><td>Agent ↔ agent</td></tr><tr><td>Granularity</td><td>1 tool = 1 function</td><td>Coarse skills, multi-turn</td></tr><tr><td>Caller</td><td>Model inside a host</td><td>Another agent (client)</td></tr></tbody>
+    </table>
+    
+  </div></section>
+<section class="slide dark divider"><div class="band"></div><div class="content">
+    <h1>Part 1 — MCP</h1>
+    <p class="subtitle">Model Context Protocol</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>MCP: The Three Roles</h2>
+    <p class="subtitle">Confusing MCP threads always trace back to mixing these up.</p>
+    <table>
+      <thead><tr><th>Role</th><th>What it is</th><th>Examples</th></tr></thead>
+      <tbody><tr><td>Host</td><td>The LLM app the user sees. Owns the model + trust.</td><td>Claude Desktop, VS Code Copilot, ChatGPT</td></tr><tr><td>Client</td><td>Connector inside the host. 1:1 with a server.</td><td>The piece of Claude that talks to GitHub MCP</td></tr><tr><td>Server</td><td>Process exposing tools / resources / prompts.</td><td>Your code</td></tr></tbody>
+    </table>
+    <p class="note">The model never speaks MCP — the host translates.</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>The Five Primitives (+ Roots)</h2>
+    <p class="subtitle">Servers offer any subset. None are mandatory.</p>
+    <table>
+      <thead><tr><th>Primitive</th><th>Who invokes</th><th>Purpose</th></tr></thead>
+      <tbody><tr><td>Tools</td><td>Model (with host approval)</td><td>Do things; may have side effects</td></tr><tr><td>Resources</td><td>App / user</td><td>Provide readable context</td></tr><tr><td>Prompts</td><td>User</td><td>Reusable templates (slash commands)</td></tr><tr><td>Sampling</td><td>Server → host</td><td>Server asks host's LLM to generate</td></tr><tr><td>Elicitation</td><td>Server → user</td><td>Server asks user for structured input</td></tr></tbody>
+    </table>
+    <p class="note">Roots: host tells server which URI scopes it may touch. Tools/resources/prompts are server primitives; sampling/elicitation are client capabilities.</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Transport and Wire Format</h2>
+    <p class="subtitle">JSON-RPC 2.0 with two standardized transports.</p>
+    <div class="impact">
+      <h3>Pick one — sometimes both</h3>
+      <ul><li>stdio — host spawns server as a subprocess. Local tools. Implicit auth (runs as the user).</li><li>Streamable HTTP — JSON-RPC over HTTPS to a single endpoint, with SSE for streaming. Remote. Auth via OAuth 2.1.</li><li>Older two-endpoint &quot;HTTP + SSE&quot; transport exists in early specs — new servers should target Streamable HTTP.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>MCP Session Lifecycle</h2>
+    <p class="subtitle">Every server follows the same shape.</p>
+    <div class="impact">
+      <h3>Five phases</h3>
+      <ul><li>Initialize — exchange protocol version + capabilities</li><li>List — tools/list, resources/list, prompts/list</li><li>Invoke — tools/call, resources/read, prompts/get</li><li>Notify — change notifications, progress updates, cancellations</li><li>Shutdown — clean close</li></ul>
+    </div>
+  </div></section>
+<section class="slide dark divider"><div class="band"></div><div class="content">
+    <h1>Implementing an MCP Server</h1>
+    <p class="subtitle">Design first. Code second.</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Step 0: Design Before You Code</h2>
+    <p class="subtitle">Write a one-page server design that answers five questions.</p>
+    <div class="impact">
+      <h3>Server design questions</h3>
+      <ul><li>Who is the user? Developer in an IDE? End user in chat?</li><li>What system are you wrapping? One bounded context per server.</li><li>Which primitives? Tools (do), Resources (attach), Prompts (templates).</li><li>Local or remote? stdio for personal/dev; HTTP for SaaS.</li><li>What is the trust boundary? Auth, scopes, destructive ops, secrets.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Pick an SDK — Same Pattern Everywhere</h2>
+    <p class="subtitle">Official SDKs: TypeScript, Python, Go, C#/.NET, Java, Kotlin, Swift, Ruby, Rust.</p>
+    <pre><code>const server = new McpServer({ name: &quot;weather&quot;, version: &quot;1.0.0&quot; });
+
+server.tool(
+  &quot;get_forecast&quot;,
+  { city: z.string(), days: z.number().int().min(1).max(7) },
+  async ({ city, days }) =&gt; fetchForecast(city, days)
+);
+
+await server.connect(new StdioServerTransport());</code></pre>
+    <p class="note">That is the entire server for a small case. The SDK handles JSON-RPC, schema advertisement, and streaming.</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Designing a Tool — Three Customer Surfaces</h2>
+    <p class="subtitle">Plus: read vs. write, idempotency, output shape, error contract.</p>
+    <table>
+      <thead><tr><th>Surface</th><th>Why it matters</th></tr></thead>
+      <tbody><tr><td>Name</td><td>The model reads this to decide whether to call. Verb + noun. Stable forever once published.</td></tr><tr><td>Description</td><td>The model's only documentation. Write it for an LLM: when to call, what it returns, what it doesn't do.</td></tr><tr><td>Input schema</td><td>JSON Schema. Validates before your code runs. Be strict; reject extras.</td></tr></tbody>
+    </table>
+    
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Resources vs. Tools vs. Prompts</h2>
+    <p class="subtitle">Pick the right primitive for the job.</p>
+    <div class="impact">
+      <h3>Rules of thumb</h3>
+      <ul><li>Tool — the model can call it; side effects OK.</li><li>Resource — the host can attach it; read-only data with a URI.</li><li>Prompt — the user triggers it; parameterized template (slash command).</li><li>&quot;Let the model search my DB&quot; → tool.</li><li>&quot;Let the user pin a table into chat&quot; → resource.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Auth, Secrets, Multi-Tenancy</h2>
+    <p class="subtitle">Where most MCP servers fail in production.</p>
+    <div class="impact">
+      <h3>Non-negotiables</h3>
+      <ul><li>stdio: inherit user env. Read keys from env vars or OS keychain.</li><li>HTTP: OAuth 2.1 is the recommended path. Validate bearer tokens, check the audience, use PKCE.</li><li>Local HTTP: validate Origin and bind to loopback — defends against DNS rebinding.</li><li>Never accept secrets as tool arguments — they'd land in chat logs.</li><li>Derive tenant from the token, never from arguments. The model can be tricked.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Versioning Your Server</h2>
+    <p class="subtitle">Tool schemas are a public API. Users and host configs pin to names.</p>
+    <table>
+      <thead><tr><th>Change</th><th>OK without major bump?</th></tr></thead>
+      <tbody><tr><td>Add a new tool</td><td>Yes — free</td></tr><tr><td>Add an optional parameter</td><td>Yes — free</td></tr><tr><td>Add a required parameter</td><td>No — major bump</td></tr><tr><td>Rename or remove a tool</td><td>No — major bump + deprecation period</td></tr></tbody>
+    </table>
+    
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Observability for MCP Servers</h2>
+    <p class="subtitle">What good operators log and measure.</p>
+    <div class="cols">
+      <div class="col">
+        <h3>Log every call</h3>
+        <ul><li>Tool name, caller identity, request ID</li><li>Duration, success / error code</li><li>Input size (not necessarily content — PII!)</li><li>Whether the call was a retry</li></ul>
+      </div>
+      <div class="col">
+        <h3>Expose as metrics</h3>
+        <ul><li>p50 / p95 / p99 latency per tool</li><li>Error rate per tool, per host</li><li>Bytes / tokens returned (host's cost driver)</li><li>Concurrent sessions</li></ul>
+      </div>
+    </div>
+  </div></section>
+<section class="slide dark divider"><div class="band"></div><div class="content">
+    <h1>MCP Best Practices</h1>
+    <p class="subtitle">Lessons people learn the hard way.</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Tool Design Best Practices</h2>
+    <p class="subtitle">Tool quality drives model behavior more than any prompt you write.</p>
+    <div class="impact">
+      <h3>Six guidelines</h3>
+      <ul><li>Fewer, sharper tools beat many overlapping ones.</li><li>Self-documenting names: cancel_subscription_with_refund beats cancel(flag=true).</li><li>Default to read-only; add writes only with a clear confirmation UX.</li><li>Return just enough data — paginate big lists.</li><li>Prefer structured output — JSON the model can index into.</li><li>Treat tool descriptions as product surface, not afterthoughts.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Security Best Practices</h2>
+    <p class="subtitle">The model is a confused deputy. Treat tool arguments as untrusted input.</p>
+    <div class="impact">
+      <h3>Hard rules</h3>
+      <ul><li>No path traversal, SQL concat, or shell exec inside a tool.</li><li>Mark destructive tools clearly — hosts will gate them with confirmation prompts.</li><li>Honor roots when the host provides them. Refuse paths outside.</li><li>Never echo secrets back. Redact in resources.</li><li>Sandbox network access where it makes sense.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Performance and Reliability</h2>
+    <p class="subtitle">Long, blocking tool calls are the #1 source of bad LLM UX.</p>
+    <div class="impact">
+      <h3>Engineering checklist</h3>
+      <ul><li>Use progress notifications and server-streamed messages for long work.</li><li>Do not assume token-level streaming of tool results works across all hosts.</li><li>Implement cancellation so users can stop runaway calls.</li><li>Set timeouts — per call and per session.</li><li>Cache resource reads where appropriate.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Testing Your Server</h2>
+    <p class="subtitle">Test before you wire into a real host — or you'll debug in chat.</p>
+    <div class="impact">
+      <h3>Four layers</h3>
+      <ul><li>MCP Inspector — official click-every-tool debugger.</li><li>Golden tests — (input → expected output) pairs per tool, in CI.</li><li>Schema tests — confirm bad input is rejected.</li><li>Host integration smoke test — at minimum in one real host before each release.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Documentation Has Two Audiences</h2>
+    <p class="subtitle">Write to both. Neither is optional.</p>
+    <div class="cols">
+      <div class="col">
+        <h3>For the LLM</h3>
+        <ul><li>Tool descriptions</li><li>Parameter docs</li><li>Examples in the description</li><li>Assume model has never seen your product</li></ul>
+      </div>
+      <div class="col">
+        <h3>For humans</h3>
+        <ul><li>README with install steps</li><li>Host config snippet (at least one host)</li><li>Required scopes and secrets</li><li>Versioning + deprecation policy</li></ul>
+      </div>
+    </div>
+  </div></section>
+<section class="slide dark divider"><div class="band"></div><div class="content">
+    <h1>MCP in Claude Code, Copilot, ChatGPT</h1>
+    <p class="subtitle">Same protocol. Three different host stories.</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Claude Desktop and Claude Code</h2>
+    <p class="subtitle">The first widely-deployed MCP hosts.</p>
+    <div class="impact">
+      <h3>Host-side specifics</h3>
+      <ul><li>Config: claude_desktop_config.json (desktop) or per-project .mcp.json (Claude Code).</li><li>Transports: stdio first-class; remote Streamable HTTP with OAuth supported.</li><li>Scopes (Claude Code): user / project / local — controls who sees the server.</li><li>UX: tools → model-callable; resources → attachment menu; prompts → slash commands.</li><li>Destructive tools prompt the user before running.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>GitHub Copilot (VS Code, JetBrains, CLI)</h2>
+    <p class="subtitle">MCP is how Copilot agent mode reaches outside the IDE.</p>
+    <div class="impact">
+      <h3>Host-side specifics</h3>
+      <ul><li>Config: workspace or user mcp.json; curated registry with one-click installs.</li><li>Transports: stdio and Streamable HTTP — host brokers OAuth flows.</li><li>Tools show up in agent mode; user can toggle individual tools per chat.</li><li>Workspace-trust gating + per-tool confirmation prompts for non-allowlisted tools.</li><li>Copilot coding agent and Copilot CLI can reuse MCP server configurations, but supported transports and capabilities differ per surface.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>ChatGPT</h2>
+    <p class="subtitle">MCP via &quot;connectors&quot; — remote only.</p>
+    <div class="impact">
+      <h3>Host-side specifics</h3>
+      <ul><li>Register the connector against a remote MCP server URL with OAuth.</li><li>Streamable HTTP only — no stdio in a hosted product.</li><li>Surfaces as connectors users enable per conversation and as Deep Research data sources.</li><li>Implication: ChatGPT-compatible servers must be publicly hosted + OAuth-capable.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>The Portability Promise — and Caveats</h2>
+    <p class="subtitle">One server, three hosts — in theory.</p>
+    <div class="impact">
+      <h3>Where portability gets messy</h3>
+      <ul><li>Auth is the hardest portability problem — each host's OAuth conventions differ.</li><li>Tool UX varies — confirmation, streaming, and resource rendering all host-specific.</li><li>Capability support varies — sampling and elicitation are not universal.</li><li>Design for the lowest-common-denominator host you care about, then progressively enhance.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>MCP Use Cases</h2>
+    <p class="subtitle">Any LLM ↔ X integration is a candidate for an MCP server.</p>
+    <table>
+      <thead><tr><th>Category</th><th>Examples</th></tr></thead>
+      <tbody><tr><td>Developer tooling</td><td>git, GitHub, filesystem, language servers, build runners</td></tr><tr><td>Data access</td><td>Postgres, Snowflake, BigQuery, S3, vector DBs</td></tr><tr><td>SaaS connectors</td><td>Jira, Linear, Slack, Notion, Salesforce, Zendesk</td></tr><tr><td>Browser &amp; web</td><td>Playwright, fetchers, search APIs</td></tr><tr><td>Internal platforms</td><td>deploy systems, feature flags, observability stacks</td></tr><tr><td>Personal automation</td><td>calendar, email, smart home</td></tr></tbody>
+    </table>
+    
+  </div></section>
+<section class="slide dark divider"><div class="band"></div><div class="content">
+    <h1>Interlude — MCP Apps</h1>
+    <p class="subtitle">When tools need a UI.</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>What Are MCP Apps?</h2>
+    <p class="subtitle">MCP servers can ship interactive UI — not just text and JSON.</p>
+    <div class="impact">
+      <h3>Two threads of the same story</h3>
+      <ul><li>ChatGPT Apps (Apps SDK) — Oct 2025, first widely-shipped implementation. Built on MCP.</li><li>MCP UI / &quot;Apps&quot; — community standardization of the same pattern across hosts.</li><li>The model still drives the conversation. The component is what the user sees and clicks.</li><li>Host support is moving fast — assume the matrix has changed; verify before relying on it.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>How an MCP App Is Wired Up</h2>
+    <p class="subtitle">Reuse all of MCP. Add three things.</p>
+    <div class="impact">
+      <h3>Three additions</h3>
+      <ul><li>A UI resource — HTML at ui://component/... with MIME type text/html;profile=mcp-app.</li><li>A tool that references it — _meta.ui.resourceUri on the tool result. (ChatGPT also accepts the legacy alias _meta['openai/outputTemplate'].)</li><li>A host ↔ component bridge — sandboxed iframe gets a ui/* JSON-RPC API (and window.openai in ChatGPT) to read structured content, call tools, request follow-up turns, persist state.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Designing MCP Apps Well</h2>
+    <p class="subtitle">Same discipline as good MCP tools, plus front-end realities.</p>
+    <div class="impact">
+      <h3>Five guidelines</h3>
+      <ul><li>Pick the right surface — add UI when output (chart, map) or input (form, picker, confirmation) is clunky as text.</li><li>Degrade gracefully — always return useful structuredContent too, so non-Apps hosts still get a sensible answer.</li><li>Thin client — no business logic in the iframe. Call back to MCP tools for data and writes.</li><li>Mind the network boundary — outbound calls governed by CSP and declared domains.</li><li>Version your UI URIs — cache-bust on each release (hosts cache aggressively).</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>MCP Apps vs. Plain Tools</h2>
+    <p class="subtitle">Pick the right tool for the job.</p>
+    <table>
+      <thead><tr><th>Question</th><th>Plain tool</th><th>MCP App</th></tr></thead>
+      <tbody><tr><td>User has to do something (approve, pick, filter)?</td><td>Awkward</td><td>Natural</td></tr><tr><td>Model can chain the output to the next tool?</td><td>Yes</td><td>Yes — via structuredContent</td></tr><tr><td>Portable across all MCP hosts?</td><td>Yes</td><td>Only on Apps-rendering hosts</td></tr><tr><td>Right for charts / maps / forms / dashboards?</td><td>No</td><td>Yes</td></tr></tbody>
+    </table>
+    <p class="note">Rule of thumb: data the model reasons over → plain tool. Something the user sees or interacts with → MCP App.</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>MCP Apps Trade-offs</h2>
+    <p class="subtitle">Be honest about the cost.</p>
+    <div class="impact">
+      <h3>Three honest caveats</h3>
+      <ul><li>Portability is uneven today — host support is moving fast; verify current support.</li><li>You're now also a front-end engineer — components need design, accessibility, CSP, dependency hygiene.</li><li>Auth and tenancy still live on the server — the model and the component are both clients in your trust model.</li></ul>
+    </div>
+  </div></section>
+<section class="slide dark divider"><div class="band"></div><div class="content">
+    <h1>Part 3 — A2A</h1>
+    <p class="subtitle">Agent-to-Agent Protocol</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Why A2A?</h2>
+    <p class="subtitle">MCP connects LLMs to tools. A2A connects agents to other agents.</p>
+    <div class="impact">
+      <h3>The scenario</h3>
+      <ul><li>You run a travel agent (LangChain), an expense agent (Copilot Studio), a calendar agent (vendor).</li><li>You want a fourth, executive-assistant agent, to coordinate all three.</li><li>Without a protocol → three custom integrations.</li><li>With A2A → each advertises an Agent Card; any client can discover and delegate.</li><li>Introduced by Google (Apr 2025). Governed by the Linux Foundation since mid-2025.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>A2A Is Opaque About Internals</h2>
+    <p class="subtitle">This is what makes cross-vendor delegation safe.</p>
+    <div class="impact">
+      <h3>The calling agent never sees the called agent's:</h3>
+      <ul><li>Prompts</li><li>Model choice</li><li>Internal tools</li><li>Memory</li><li>It only sees the contract: skills, inputs, outputs, lifecycle.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>A2A Core Concepts</h2>
+    <p class="subtitle">Memorize the vocabulary. Every A2A discussion uses it.</p>
+    <table>
+      <thead><tr><th>Concept</th><th>Meaning</th></tr></thead>
+      <tbody><tr><td>Agent Card</td><td>JSON at /.well-known/agent-card.json. The &quot;menu&quot; other agents read.</td></tr><tr><td>Skill</td><td>Named capability — coarse-grained, often multi-turn.</td></tr><tr><td>Task</td><td>Unit of work. Lifecycle: submitted → working → input-required → completed / failed / canceled. Also: auth-required, rejected.</td></tr><tr><td>Message / Part</td><td>A turn; carries text, file, or structured data parts.</td></tr><tr><td>Artifact</td><td>Durable output of a task (PDF, patch, dataset).</td></tr><tr><td>Push notification</td><td>Optional webhook for async progress updates.</td></tr></tbody>
+    </table>
+    
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>A2A Transport — Multiple Bindings</h2>
+    <p class="subtitle">Transport-agnostic by design. Pick a binding.</p>
+    <div class="impact">
+      <h3>Bindings + extras</h3>
+      <ul><li>JSON-RPC 2.0 over HTTP(S)</li><li>gRPC binding</li><li>HTTP+JSON / REST binding</li><li>Server-Sent Events layered for streaming responses</li><li>Webhooks for push notifications on long-running tasks</li><li>Auth: whatever HTTP supports (OAuth, API keys, mTLS) — declared in the Agent Card</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>A2A Collaboration Lifecycle</h2>
+    <p class="subtitle">Six phases from discovery to artifact.</p>
+    <div class="impact">
+      <h3>Lifecycle</h3>
+      <ul><li>Discover — fetch the Agent Card.</li><li>Authenticate — per scheme declared in the card.</li><li>Send task — message/send or message/stream.</li><li>Iterate — agent may go input-required; client (or its user) responds.</li><li>Receive artifacts — durable outputs.</li><li>Close — completed / failed / canceled.</li></ul>
+    </div>
+  </div></section>
+<section class="slide dark divider"><div class="band"></div><div class="content">
+    <h1>Implementing an A2A Agent</h1>
+    <p class="subtitle">Server side, then client side.</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Server Side: Expose Your Agent</h2>
+    <p class="subtitle">Make an existing agent reachable to other agents.</p>
+    <div class="impact">
+      <h3>Six steps</h3>
+      <ul><li>Write the Agent Card — pick which skills to expose, not every capability.</li><li>Pick modes — text? files? structured JSON? streaming?</li><li>Implement endpoints for your binding — JSON-RPC message/send, message/stream, tasks/get, tasks/cancel; or REST POST /message:send, GET /tasks/{id}; or gRPC SendMessage, GetTask. Use an SDK.</li><li>Choose auth — API keys (internal) or OAuth / JWT (cross-org).</li><li>Implement push notifications for long-running tasks.</li><li>Serve the card at /.well-known/agent-card.json.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Client Side: Call Other Agents</h2>
+    <p class="subtitle">Make your agent capable of delegating.</p>
+    <div class="impact">
+      <h3>Five concerns</h3>
+      <ul><li>Maintain a registry of known agents — list, catalog, or discovery service.</li><li>Fetch and cache Agent Cards. Refresh periodically.</li><li>Treat remote agents as a tool type in your planner — often surfaced as an MCP tool.</li><li>Handle input-required gracefully — bubble to user or answer from context.</li><li>Propagate user identity carefully — OBO tokens when acting on the user's behalf.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Design Decisions That Matter</h2>
+    <p class="subtitle">Get these wrong early and they hurt forever.</p>
+    <div class="impact">
+      <h3>Three trade-offs</h3>
+      <ul><li>Coarse vs. fine skills — &quot;plan a trip&quot; (A2A skill), not &quot;look up an airport code&quot; (MCP tool).</li><li>Sync vs. async — long tasks need streaming + push notifications from day one.</li><li>State boundary — what lives inside the remote agent vs. what the client passes every call.</li></ul>
+    </div>
+  </div></section>
+<section class="slide dark divider"><div class="band"></div><div class="content">
+    <h1>A2A Best Practices</h1>
+    <p class="subtitle">Trust, hygiene, operations.</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Agent Card Hygiene</h2>
+    <p class="subtitle">The card is documentation a delegating LLM reads.</p>
+    <div class="impact">
+      <h3>Three rules</h3>
+      <ul><li>Write skills for an LLM reader — clear, specific, no marketing fluff.</li><li>Don't lie. If you can't really do X, don't list X — real requests will get routed to you.</li><li>Version the card. Bump on breaking changes; clients can pin.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Safety and Trust</h2>
+    <p class="subtitle">Prompt-injection now crosses agent boundaries.</p>
+    <div class="impact">
+      <h3>Hard rules</h3>
+      <ul><li>Authenticate every request — never trust a caller's identity claim alone.</li><li>Re-authorize on the user's behalf — check the human can do this, not just that the caller is &quot;trusted&quot;.</li><li>End-to-end task correlation IDs — cross-agent debugging is impossible without them.</li><li>Treat agent responses as untrusted input — sanitize before feeding back to your model.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Operational Concerns</h2>
+    <p class="subtitle">Multi-tenant agents are SaaS. Treat them that way.</p>
+    <div class="impact">
+      <h3>Three controls</h3>
+      <ul><li>Per-skill quotas and rate limits — a misbehaving caller can DDoS via task creation.</li><li>Cancellation must actually cancel — don't keep burning tokens.</li><li>Surface cost — return cost metadata in artifacts so callers can budget.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>A2A Use Cases</h2>
+    <p class="subtitle">Where coarse, contract-only delegation pays off.</p>
+    <table>
+      <thead><tr><th>Use case</th><th>Why A2A fits</th></tr></thead>
+      <tbody><tr><td>Vendor-built specialist agents</td><td>Collaborate without sharing source or model.</td></tr><tr><td>Cross-team agents inside a company</td><td>Each team owns its own stack.</td></tr><tr><td>Marketplaces of agents</td><td>Agent Card = marketplace listing.</td></tr><tr><td>Long-running, human-in-the-loop tasks</td><td>Native lifecycle for input-required and async.</td></tr><tr><td>Multi-modal hand-offs</td><td>Pass an image → vision agent → structured artifact.</td></tr></tbody>
+    </table>
+    
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>MCP vs. A2A at a Glance</h2>
+    <p class="subtitle">Different problems, same era, designed to coexist.</p>
+    <table>
+      <thead><tr><th>Aspect</th><th>MCP</th><th>A2A</th></tr></thead>
+      <tbody><tr><td>Connects</td><td>LLM app ↔ tools</td><td>Agent ↔ agent</td></tr><tr><td>Granularity</td><td>Fine (one function)</td><td>Coarse (multi-turn skill)</td></tr><tr><td>Caller</td><td>Model inside a host</td><td>Another agent client</td></tr><tr><td>State</td><td>Mostly stateless per call</td><td>Stateful tasks with lifecycles</td></tr><tr><td>Discovery</td><td>List APIs at session start</td><td>Agent Card at well-known URL</td></tr><tr><td>Transport</td><td>stdio or Streamable HTTP</td><td>HTTP with JSON-RPC, REST, or gRPC bindings</td></tr></tbody>
+    </table>
+    
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>How They Stack</h2>
+    <p class="subtitle">MCP is how an agent uses tools. A2A is how an agent uses another agent.</p>
+    <pre><code>[ User ]
+   |
+[ Host application + LLM ]
+   |  speaks MCP to tools
+   +--&gt; [ MCP server: filesystem ]
+   +--&gt; [ MCP server: postgres  ]
+   +--&gt; [ MCP server: &quot;delegate to agent&quot; ]
+            |  speaks A2A
+            +--&gt; [ Remote agent: travel   ]
+            +--&gt; [ Remote agent: expenses ]
+                    \__ uses MCP internally for its own tools</code></pre>
+    <p class="note">A common 2025-era architecture: A2A across agents, MCP inside each agent.</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Which Protocol Do I Build?</h2>
+    <p class="subtitle">Ask in this order.</p>
+    <div class="impact">
+      <h3>Decision flow</h3>
+      <ul><li>Tool/data source for hosts you don't own? → MCP server.</li><li>Self-contained agent for other agents to call? → A2A agent.</li><li>Building the host yourself? → Consume both.</li><li>One-shot internal feature for a single LLM app? → Maybe neither yet.</li><li>Use protocols when you need portability, decoupling, or third-party reach.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Capstone Design Exercise</h2>
+    <p class="subtitle">Bring a one-page sketch to next class.</p>
+    <div class="impact">
+      <h3>Sketch three things</h3>
+      <ul><li>One MCP server exposing your app's data + actions to an LLM (3–5 tools, 0–3 resources).</li><li>(Optional) One A2A skill other agents could delegate to you.</li><li>The trust model: who authenticates, what scopes, what is destructive.</li></ul>
+    </div>
+  </div></section>
+<section class="slide dark divider"><div class="band"></div><div class="content">
+    <h1>Live Demo</h1>
+    <p class="subtitle">DePaul Library MCP + MCP App + A2A</p>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>What the Demo Contains</h2>
+    <p class="subtitle">demo-library-mcp/ in the lectures repo — all three layers, one fake catalog.</p>
+    <div class="impact">
+      <h3>Pieces</h3>
+      <ul><li>MCP server (stdio) — 4 tools (search_books, get_student_account, list_overdue, check_out_book) + 4 resources.</li><li>MCP App — student dashboard widget at ui://component/student-dashboard.html, referenced by _meta.ui.resourceUri.</li><li>A2A agent — Agent Card at /.well-known/agent-card.json, skill build_reading_list over JSON-RPC.</li><li>Fake data layer shared by both servers — same domain, two interfaces.</li><li>Smoke test + MCP Inspector launcher included.</li></ul>
+    </div>
+  </div></section>
+<section class="slide"><div class="band"></div><div class="content">
+    <h2>Connecting the Demo to GitHub Copilot</h2>
+    <p class="subtitle">Drop this in .vscode/mcp.json — reload — Agent mode sees the tools.</p>
+    <pre><code>{
+  &quot;servers&quot;: {
+    &quot;depaul-library&quot;: {
+      &quot;type&quot;: &quot;stdio&quot;,
+      &quot;command&quot;: &quot;node&quot;,
+      &quot;args&quot;: [&quot;${workspaceFolder}/demo-library-mcp/mcp-server.js&quot;]
+    }
+  }
+}</code></pre>
+    <p class="note">Then try: &quot;What's on the featured shelf?&quot; · &quot;Who has overdue books?&quot; · &quot;Check out DDD for S-1003.&quot;</p>
+  </div></section>
+<section class="slide dark"><div class="band"></div><div class="content">
+    <h2>Week 9 Takeaways</h2>
+    <p class="subtitle">LLM apps are orchestrators of tools and agents — not monoliths.</p>
+    <div class="impact dark-impact">
+      <ul><li>MCP = LLM ↔ tools/data. Small set of well-defined primitives.</li><li>A2A = agent ↔ agent. Coarse skills, explicit task lifecycle.</li><li>The hard parts are auth, safety, and the UX of confirmation.</li><li>Tool descriptions and Agent Cards are product surface, not afterthoughts.</li><li>Pin the protocol version — both specs evolved rapidly through 2024–2025.</li><li>Use SDKs. Use the Inspector. Test before shipping.</li></ul>
+    </div>
+    <p class="closing">Next week: putting it all together for your capstone preview.</p>
+  </div></section>
+  </main>
+</body>
+</html>
