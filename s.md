@@ -1,34 +1,10 @@
----
-marp: true
-theme: default
-paginate: true
-header: 'CSC 394 — Week 9'
-footer: 'Building LLM Systems: MCP and A2A'
----
 
-<!-- _class: lead -->
 
 # Week 9: Building LLM Systems
 ## MCP Servers and A2A
 
 ### CSC 394 — Software Projects
 #### DePaul University
-
----
-
-# Today's Agenda
-
-1. **Why protocols?** The M × N integration problem
-2. **MCP concepts** — roles, primitives, lifecycle
-3. **Implementing an MCP server** — the how-to
-4. **MCP best practices**
-5. **MCP in Claude Code, Copilot, ChatGPT**
-6. **MCP use cases**
-7. **A2A concepts** — Agent Cards, tasks, artifacts
-8. **Implementing an A2A agent**
-9. **A2A best practices and use cases**
-10. **MCP vs. A2A** — how they stack
-11. **Design exercise** for your capstone
 
 ---
 
