@@ -1,0 +1,185 @@
+<!doctype html>
+<!--
+  DePaul Library — Student Dashboard
+  An "MCP App" UI component. Rendered in a sandboxed iframe by MCP hosts that
+  support inline UI (ChatGPT Apps, recent VS Code / Copilot builds, etc.).
+
+  The host typically injects:
+    - structuredContent from the tool call (via window.openai.toolOutput or a
+      ui/* postMessage), OR
+    - URL hash / postMessage with the same shape.
+
+  On hosts that don't render MCP Apps, this file is still served as a regular
+  HTML resource and can be inspected manually. Graceful degradation FTW.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Student Dashboard — DePaul Library</title>
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
+  <style>
+    :root {
+      --bg: #f7f4ee;
+      --ink: #0f172a;
+      --muted: #475569;
+      --accent: #b85042;
+      --panel: #ffffff;
+      --line: #ddd7ce;
+      --good: #2c5f2d;
+      --bad: #b8210e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 18px;
+      font-family: "Segoe UI", "Aptos", "Trebuchet MS", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 1.4rem;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin-bottom: 14px;
+    }
+    .row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .stat {
+      flex: 1 1 140px;
+      background: #fdf9f4;
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .stat .label {
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-size: 0.72rem;
+      color: #8f3f34;
+    }
+    .stat .value {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+    h2 {
+      margin: 8px 0 8px;
+      font-size: 1.02rem;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--accent);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th { background: #faf3e6; }
+    .overdue { color: var(--bad); font-weight: 600; }
+    .ok { color: var(--good); }
+    .empty { color: var(--muted); font-style: italic; padding: 14px; }
+    .footer {
+      margin-top: 14px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="root">
+    <div class="empty">Loading student dashboard…</div>
+  </div>
+
+  <script>
+    // ---- Read the tool's structured output --------------------------------
+    // Different hosts deliver structured content in different ways. We try a
+    // few common channels in order. Anything we can read gets normalized to a
+    // simple { student_id, name, program, year, email, fines_usd, checked_out }
+    // object.
+    function readStructured() {
+      try {
+        // 1. ChatGPT Apps SDK: window.openai.toolOutput
+        if (window.openai && window.openai.toolOutput) return window.openai.toolOutput;
+      } catch {}
+      try {
+        // 2. URL hash with base64 JSON (handy for manual testing).
+        const h = window.location.hash;
+        if (h && h.length > 1) {
+          const json = decodeURIComponent(atob(h.slice(1)));
+          return JSON.parse(json);
+        }
+      } catch {}
+      // 3. Fallback demo data so the file renders if opened directly.
+      return {
+        student_id: 'S-1001',
+        name: 'Ana Pereira',
+        program: 'B.S. Software Engineering',
+        year: 'Junior',
+        email: 'apereira@depaul.edu',
+        fines_usd: '0.00',
+        checked_out: [
+          { isbn: '978-0-321-12521-7', title: 'Domain-Driven Design', author: 'Eric Evans', due_on: '2025-11-30', overdue: false },
+          { isbn: '978-0-262-03384-8', title: 'Introduction to Algorithms', author: 'CLRS', due_on: '2025-12-05', overdue: false },
+        ],
+      };
+    }
+
+    // ---- Render -----------------------------------------------------------
+    function esc(s) {
+      return String(s).replace(/[&<>"]/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'
+      }[c]));
+    }
+
+    function render(data) {
+      const overdueCount = (data.checked_out || []).filter((co) => co.overdue).length;
+      const rows = (data.checked_out || []).map((co) => `
+        <tr>
+          <td>${esc(co.title)}<br><span style="color:#64748b;font-size:0.82rem">${esc(co.author || '')}</span></td>
+          <td>${esc(co.isbn)}</td>
+          <td>${esc(co.due_on)}</td>
+          <td class="${co.overdue ? 'overdue' : 'ok'}">${co.overdue ? '⚠ Overdue' : 'OK'}</td>
+        </tr>
+      `).join('');
+
+      document.getElementById('root').innerHTML = `
+        <h1>${esc(data.name)}</h1>
+        <div class="meta">${esc(data.student_id)} · ${esc(data.program)} · ${esc(data.year)} · ${esc(data.email)}</div>
+        <div class="row">
+          <div class="stat"><div class="label">Checked out</div><div class="value">${(data.checked_out || []).length}</div></div>
+          <div class="stat"><div class="label">Overdue</div><div class="value">${overdueCount}</div></div>
+          <div class="stat"><div class="label">Outstanding fines</div><div class="value">$${esc(data.fines_usd)}</div></div>
+        </div>
+        <h2>Loans</h2>
+        ${rows ? `<table><thead><tr><th>Title</th><th>ISBN</th><th>Due</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`
+               : `<div class="empty">No active loans.</div>`}
+        <div class="footer">MCP App · rendered from <code>ui://component/student-dashboard.html</code></div>
+      `;
+    }
+
+    render(readStructured());
+  </script>
+</body>
+</html>

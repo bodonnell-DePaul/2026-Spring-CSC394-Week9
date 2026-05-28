@@ -1,652 +1,248 @@
+# DePaul Library — MCP / MCP Apps / A2A Demo
 
+A small, self-contained demo for **CSC 394 — Week 9**. It shows three things
+side-by-side, backed by a fictional DePaul library catalog:
 
-# Week 9: Building LLM Systems
-## MCP Servers and A2A
+1. **An MCP server** with four tools and four resources (stdio transport).
+2. **An MCP App** — a sandboxed HTML widget delivered as a UI resource and
+   referenced by a tool result (`_meta.ui.resourceUri`).
+3. **An A2A agent** that exposes a single skill (`build_reading_list`) with
+   an Agent Card at `/.well-known/agent-card.json` over the JSON-RPC binding.
 
-### CSC 394 — Software Projects
-#### DePaul University
-
----
-
-# The M × N Problem
-
-> M apps × N systems = too many bespoke integrations.
-
-- M = Claude, Copilot, ChatGPT, Cursor, your chatbot…
-- N = GitHub, Jira, your DB, your data warehouse…
-- Without a protocol: every host re-implements every connector.
-- Same problem **HTTP** solved for browsers, **LSP** for editors, **ODBC** for databases.
-
-Two protocols emerged in 2024–2025 to solve different halves.
+No real data is used. All books, students, due dates, and fines are made up.
 
 ---
 
-# Two Complementary Protocols
+## Prerequisites
 
-|  | **MCP** | **A2A** |
-|---|---|---|
-| Announced | Anthropic, Nov 2024 | Google, Apr 2025 |
-| Connects | LLM app ↔ tools & data | Agent ↔ agent |
-| Granularity | One tool = one function | Coarse skills, multi-turn |
-| Caller | Model (inside a host) | Another agent |
-
-They are **complementary**, not competing.
+- **Node.js 20+** (uses ES modules and `node:` builtins)
+- **npm**
+- One of the following MCP hosts to "see" the server interactively:
+  - **GitHub Copilot in VS Code** — recommended for this course
+  - **Claude Desktop** (config snippet provided below)
+  - **MCP Inspector** — no host required; great for debugging
 
 ---
 
-<!-- _class: lead -->
+## Install
 
-# Part 1: MCP — Model Context Protocol
-
----
-
-# MCP: The Three Roles
-
-| Role | What it is | Examples |
-|---|---|---|
-| **Host** | The LLM app the user sees. Owns the model + trust. | Claude Desktop, VS Code Copilot, ChatGPT |
-| **Client** | Connector inside the host. 1:1 with a server. | The piece of Claude that talks to "GitHub MCP" |
-| **Server** | Process exposing tools/resources/prompts. | Your code |
-
-The **model never speaks MCP** — the host translates.
-
----
-
-# The Five Primitives (+ Roots)
-
-| Primitive | Who invokes | Purpose |
-|---|---|---|
-| **Tools** | Model (with host approval) | Do things; may have side effects |
-| **Resources** | App / user | Provide readable context |
-| **Prompts** | User | Reusable templates (slash commands) |
-| **Sampling** | Server → host | Server asks host's LLM to generate |
-| **Elicitation** | Server → user | Server asks user for structured input |
-
-**Roots**: host tells server which URIs it may touch.
-Note: tools/resources/prompts are *server* primitives; sampling/elicitation are *client* capabilities the server may invoke.
-
----
-
-# Transport and Wire Format
-
-- Wire format: **JSON-RPC 2.0**.
-- Two standard transports:
-  - **stdio** — host spawns server as subprocess. Local tools. Implicit auth.
-  - **Streamable HTTP** — JSON-RPC over HTTPS + SSE. Remote. OAuth 2.1.
-- Older "HTTP+SSE" transport exists; new servers should target Streamable HTTP.
-
----
-
-# MCP Session Lifecycle
-
-1. **Initialize** — exchange protocol version + capabilities.
-2. **List** — `tools/list`, `resources/list`, `prompts/list`.
-3. **Invoke** — `tools/call`, `resources/read`, …
-4. **Notify** — change notifications, progress updates.
-5. **Shutdown** — clean close.
-
-The same shape for every server, every host.
-
----
-
-<!-- _class: lead -->
-
-# Implementing an MCP Server
-
----
-
-# Step 0: Design Before You Code
-
-Write a **one-page server design** that answers:
-
-1. **Who is the user?** Developer in an IDE? End user?
-2. **What system are you wrapping?** One bounded context per server.
-3. **Which primitives?** Tools, resources, prompts — pick what fits.
-4. **Local or remote?** stdio for personal/dev; HTTP for SaaS.
-5. **Trust boundary?** Auth, scopes, destructive ops, secrets.
-
----
-
-# Pick an SDK
-
-Official SDKs: **TypeScript, Python, Go, C#/.NET, Java, Kotlin, Swift, Ruby, Rust**.
-
-The pattern is the same across all of them — declare tools, resources, prompts; connect a transport. Tier and feature parity vary; check protocol version per SDK.
-
-```ts
-const server = new McpServer({ name: "weather", version: "1.0.0" });
-
-server.tool("get_forecast",
-  { city: z.string(), days: z.number().int().min(1).max(7) },
-  async ({ city, days }) => fetchForecast(city, days)
-);
-
-await server.connect(new StdioServerTransport());
+```powershell
+cd lectures_v2\demo-library-mcp
+npm install
 ```
 
 ---
 
-# Designing a Tool — Three Surfaces
+## Run
 
-| Part | Why it matters |
-|---|---|
-| **Name** | Model reads this to decide whether to call. Verb+noun. Stable. |
-| **Description** | The model's only docs. Write **for an LLM** — when to call, what it returns, what it doesn't do. |
-| **Input schema** | JSON Schema. Validates *before* your code runs. Be strict. |
-
-Plus: read vs. write, idempotency, output shape, error contract.
-
----
-
-# Resources vs. Tools
-
-- **Tool** = the model can call it. Side effects OK.
-- **Resource** = the *host* can attach it to context. Read-only data with a URI.
-- **Prompt** = a *user*-triggered template (slash command).
-
-> Rule of thumb: "let the model search my DB" → **tool**.
-> "let the user pin a database table into chat" → **resource**.
-
----
-
-# Auth, Secrets, Multi-Tenancy
-
-- **stdio**: inherit user env. Read keys from env vars or OS keychain.
-- **HTTP**: OAuth 2.1 is the recommended path. Validate bearer tokens, **check the audience**, use **PKCE**.
-- **Local HTTP**: validate `Origin` and bind to loopback — defends against DNS rebinding.
-- **Never accept secrets as tool args** — they'd land in chat logs.
-- **Derive tenant from the token**, never from arguments. The model can be tricked.
-
----
-
-# Versioning Your Server
-
-- Advertise a server version at handshake.
-- Treat tool schemas as a **public API**.
-
-| Change | OK? |
-|---|---|
-| Add new tool | ✅ Free |
-| Add optional parameter | ✅ Free |
-| Add required parameter | ⚠️ Major bump |
-| Rename / remove tool | ⚠️ Major bump + deprecation |
-
-User prompts and host configs pin to tool names.
-
----
-
-# Observability
-
-**Log every call:**
-- Tool name, caller identity, request ID, duration, success/error.
-- Input *size* (not necessarily content — PII).
-- Whether it was a retry.
-
-**Metrics to expose:**
-- p50/p95/p99 latency per tool.
-- Error rate per tool, per host.
-- Bytes/tokens returned (host's cost driver).
-
----
-
-<!-- _class: lead -->
-
-# MCP Best Practices
-
----
-
-# Tool Design Best Practices
-
-- **Fewer, sharper tools** beat many overlapping ones.
-- **Self-documenting names**: `cancel_subscription_with_refund` > `cancel(flag=true)`.
-- **Default to read-only**; add writes only with confirmation UX.
-- **Return *just enough* data** — paginate big lists.
-- **Prefer structured output** — JSON the model can index into.
-
----
-
-# Security Best Practices
-
-- Tool arguments are **untrusted input**. The model is a confused deputy.
-- No path traversal, SQL concat, or shell `exec` inside a tool.
-- Mark destructive tools clearly — hosts will gate them.
-- Honor `roots`. Refuse paths outside.
-- Never echo secrets back. Redact in resources.
-
----
-
-# Performance & Reliability
-
-- **Use progress + partial results** — MCP supports progress notifications and server-streamed messages. Don't assume token-level streaming uniformly.
-- **Implement cancellation** so users can stop runaway calls.
-- **Set timeouts** — per call and per session.
-- **Cache** resource reads where appropriate.
-
-Long, blocking tool calls are the #1 source of bad LLM UX.
-
----
-
-# Testing Your Server
-
-- **MCP Inspector** — official click-every-tool debugger. Use it *before* wiring to a real host.
-- **Golden tests** — store (input → expected output) pairs per tool, run in CI.
-- **Schema tests** — confirm bad input is rejected.
-- **Host integration smoke test** — at minimum in one real host before each release.
-
----
-
-# Documentation Has Two Audiences
-
-1. **The LLM** — tool & parameter descriptions. Assume the model has never seen your product.
-2. **Humans** — README with install, host config snippet, required scopes/secrets.
-
-Tool descriptions are **product surface**, not afterthoughts.
-
----
-
-<!-- _class: lead -->
-
-# MCP in Claude Code, Copilot, ChatGPT
-
----
-
-# Claude Desktop & Claude Code
-
-- **Config**: `claude_desktop_config.json`, or per-project `.mcp.json`.
-- **Transports**: stdio first-class; remote Streamable HTTP w/ OAuth.
-- **Scopes** (Claude Code): user / project / local.
-- **UX**: tools → model-callable; resources → attachment menu; prompts → slash commands.
-- Destructive tools prompt the user.
-
----
-
-# GitHub Copilot (VS Code, JetBrains, CLI)
-
-- **Config**: workspace or user `mcp.json`; curated registry.
-- **Transports**: stdio + Streamable HTTP with OAuth brokered by the host.
-- **Where**: tools show up in **agent mode**; user can toggle per-chat.
-- Workspace-trust gating + per-tool confirmation prompts.
-- Copilot coding agent and Copilot CLI can reuse the same MCP server *configurations*, but supported transports and capabilities differ per surface — confirm in each.
-
----
-
-# ChatGPT
-
-- MCP via **connectors** — registered against a remote MCP server URL with OAuth.
-- **Streamable HTTP only** — no stdio in a hosted product.
-- Surfaces as connectors users enable per conversation, and as Deep Research data sources.
-- **Implication**: ChatGPT-compatible servers must be hosted + OAuth-capable.
-
----
-
-# Portability Promise — and Caveats
-
-The same MCP server *can* work everywhere. In practice:
-
-- **Auth** is the hardest portability problem.
-- **Tool UX** varies — confirmation, streaming, resource rendering.
-- **Capability support** varies — sampling, elicitation are not universal.
-
-> Design for the lowest-common-denominator host you care about, then progressively enhance.
-
----
-
-# MCP Use Cases
-
-| Category | Examples |
-|---|---|
-| Developer tooling | git, GitHub, filesystem, language servers |
-| Data access | Postgres, Snowflake, S3, vector DBs |
-| SaaS connectors | Jira, Linear, Slack, Notion, Salesforce |
-| Browser & web | Playwright, fetchers, search APIs |
-| Internal platforms | deploy systems, feature flags, observability |
-| Personal automation | calendar, email, home assistant |
-
-Pattern: any LLM ↔ X integration is a candidate for an MCP server.
-
----
-
-<!-- _class: lead -->
-
-# Interlude: MCP Apps
-
-When tools need a UI
-
----
-
-# What Are MCP Apps?
-
-An MCP server can attach an **interactive HTML/JS component** to a tool result. A supporting host renders it inline alongside chat — sandboxed and scoped.
-
-- **ChatGPT Apps (Apps SDK)** — Oct 2025, first widely-shipped implementation. Built directly on MCP.
-- **MCP UI / "Apps"** — community effort to standardize the same pattern across hosts.
-- The model still drives. The component is what the *user* sees and clicks.
-
----
-
-# How an MCP App Is Wired Up
-
-Reuse all of MCP, add three things:
-
-1. **A UI resource** — HTML at e.g. `ui://component/dashboard.html` with MIME `text/html;profile=mcp-app`.
-2. **A tool that references it** — tool's `_meta.ui.resourceUri` points at the resource. (ChatGPT also accepts the legacy alias `_meta["openai/outputTemplate"]`.)
-3. **A host ↔ component bridge** — sandboxed iframe gets a `ui/*` JSON-RPC API (and `window.openai` in ChatGPT) to read structured content, call MCP tools, request follow-up turns, persist state.
-
----
-
-# Designing MCP Apps Well
-
-- **Pick the right surface.** Add UI when output (chart, map, dashboard) or input (form, picker, confirmation) is clunky as text.
-- **Degrade gracefully.** Always return useful `structuredContent` too — non-Apps hosts still get a sensible answer.
-- **Thin client.** No business logic in the iframe — call back to MCP tools for data and writes.
-- **Mind the network boundary.** Outbound calls governed by CSP + declared domains.
-- **Version your UI URIs.** Cache-bust on each release.
-
----
-
-# MCP Apps vs. Plain Tools
-
-| Question | Plain tool | MCP App |
+| What | Command | Notes |
 |---|---|---|
-| User has to *do* something? | Awkward | Natural |
-| Model can chain the output? | Yes | Yes (via `structuredContent`) |
-| Portable across all MCP hosts? | Yes | Only on hosts that render Apps |
-| Right for charts / maps / forms? | No | Yes |
+| MCP server (stdio) | `npm run mcp` | Speaks JSON-RPC over stdin/stdout. Don't run it standalone — hosts launch it. |
+| A2A server (HTTP) | `npm run a2a` | Listens on `http://localhost:7042/`. |
+| Smoke test the MCP server | `npm run smoke` | Spawns the server, lists tools/resources, calls a few tools. |
+| MCP Inspector | `npm run inspect` | Launches the official debugger UI. |
+
+You can leave both servers running simultaneously — they share data files but
+not state.
 
 ---
 
-# Trade-offs to Be Honest About
+## Connect from GitHub Copilot (VS Code)
 
-- **Portability today is uneven** — host support is moving fast; check current docs.
-- **You're now also a front-end engineer.** Components need design, accessibility, CSP, dep hygiene.
-- **Auth & tenancy stay on the server.** Model and component are both *clients* — never trust either to enforce permissions.
+> Tested with the GitHub Copilot extension's **agent mode** + MCP support.
 
-> If your value is data the model reasons over → plain tool.
-> If your value is something the user sees or interacts with → MCP App.
+1. Open the `lectures_v2` folder (the parent of this demo) in VS Code.
+2. Create the file `lectures_v2\.vscode\mcp.json` with this content
+   (adjust the path if your checkout lives elsewhere):
 
----
+   ```json
+   {
+     "servers": {
+       "depaul-library": {
+         "type": "stdio",
+         "command": "node",
+         "args": [
+           "${workspaceFolder}/demo-library-mcp/mcp-server.js"
+         ]
+       }
+     }
+   }
+   ```
 
-<!-- _class: lead -->
+3. Reload VS Code. Open Copilot Chat and switch to **Agent** mode.
+4. Click the tools (🛠) icon in the chat input. You should see four tools
+   listed under `depaul-library`:
+   - `search_books`
+   - `get_student_account`
+   - `list_overdue`
+   - `check_out_book` (marked destructive — Copilot will ask before running)
+5. Try the demo prompts below.
 
-# Part 3: A2A — Agent-to-Agent
+If Copilot says the server failed to start, run `npm run smoke` to confirm the
+server itself is healthy, then check the path in `mcp.json` is correct.
 
----
-
-# Why A2A?
-
-You run:
-- A travel agent on LangChain
-- An expense agent on Copilot Studio
-- A calendar agent from a vendor
-
-You want a fourth agent to **coordinate** them.
-
-Without a protocol → 3 custom integrations. With **A2A** → each advertises an **Agent Card**; any A2A client can discover and delegate.
-
-Introduced by **Google (Apr 2025)**, governed by the **Linux Foundation** since mid-2025.
-
----
-
-# A2A Is Opaque About Internals
-
-The calling agent does **not** see the called agent's:
-
-- Prompts
-- Model
-- Tools
-- Memory
-
-It sees only the contract: **skills, inputs, outputs, lifecycle**.
-
-This is what makes cross-vendor delegation safe.
-
----
-
-# A2A Core Concepts
-
-| Concept | Meaning |
-|---|---|
-| **Agent Card** | JSON at `/.well-known/agent-card.json`. Name, skills, endpoints, auth. The "menu". |
-| **Skill** | Named capability — coarse-grained, often multi-turn. |
-| **Task** | Unit of work. Lifecycle: `submitted → working → input-required → completed/failed/canceled`. Also: `auth-required`, `rejected`. |
-| **Message / Part** | A turn; carries text, file, or structured data parts. |
-| **Artifact** | Durable output of a task (PDF, patch, dataset). |
-| **Push notification** | Webhook for async progress. |
-
----
-
-# A2A Transport — Multiple Bindings
-
-- **Transport-agnostic** by design: choose one binding
-  - **JSON-RPC 2.0** over HTTP(S)
-  - **gRPC** binding
-  - **HTTP+JSON / REST** binding
-- **SSE** layered for streaming responses
-- **Webhooks** for push notifications on long tasks
-- **Auth**: whatever HTTP supports — OAuth, API keys, mTLS — **declared in the Agent Card**.
-
-> This lecture uses the JSON-RPC binding for examples.
-
----
-
-# A2A Collaboration Lifecycle
-
-1. **Discover** — fetch Agent Card.
-2. **Authenticate** — per scheme in the card.
-3. **Send task** — `message/send` or `message/stream`.
-4. **Iterate** — agent may go `input-required`; respond.
-5. **Receive artifacts** — durable outputs.
-6. **Close** — `completed` / `failed` / `canceled`.
-
----
-
-<!-- _class: lead -->
-
-# Implementing an A2A Agent
-
----
-
-# Server Side: Expose Your Agent
-
-1. **Write the Agent Card.** Choose which skills to expose — not every internal capability.
-2. **Pick modes.** Text only? Files? Structured JSON? Streaming?
-3. **Implement endpoints** for your binding — JSON-RPC `message/send`, `message/stream`, `tasks/get`, `tasks/cancel`; REST `POST /message:send`, `GET /tasks/{id}`; or the gRPC equivalents. Use an SDK.
-4. **Choose auth.** API keys (internal) or OAuth / JWT (cross-org).
-5. **Push notifications** for long tasks.
-6. **Serve the card** at `/.well-known/agent-card.json`.
-
----
-
-# Client Side: Call Other Agents
-
-1. **Registry of known agents** — list, catalog, or discovery service.
-2. **Fetch & cache Agent Cards.** Refresh periodically.
-3. **Treat remote agents as a tool type** in your planner — often surfaced as an MCP tool.
-4. **Handle `input-required`** — bubble up or answer from context.
-5. **Propagate user identity carefully** — OBO tokens when acting as the user.
-
----
-
-# Design Decisions That Matter
-
-- **Coarse vs. fine skills.** A2A skill = "plan a trip", not "look up an airport code".
-- **Sync vs. async.** Long task? Streaming + push notifications from day one.
-- **State boundary.** What lives in the remote agent vs. what the client passes every call.
-
----
-
-<!-- _class: lead -->
-
-# A2A Best Practices
-
----
-
-# Agent Card Hygiene
-
-- **Write skills for an LLM reader.** Like MCP tool descriptions, the card is documentation a delegating LLM reads.
-- **Don't lie.** If you can't really do X, don't list X — real requests will be routed to you.
-- **Version the card.** Bump on breaking changes; clients can pin.
-
----
-
-# Safety and Trust
-
-- **Authenticate every request** — never trust a caller's identity claim alone.
-- **Re-authorize on the user's behalf** — check the *human* can do this, not just the calling agent.
-- **End-to-end task correlation IDs** — cross-agent debugging is impossible without them.
-- **Treat agent responses as untrusted input** — prompt-injection crosses agent boundaries.
-
----
-
-# Operational Concerns
-
-- **Per-skill quotas and rate limits.** A misbehaving caller can DDoS via task creation.
-- **Cancellation must actually cancel.** Don't keep burning tokens.
-- **Surface cost.** Return cost metadata in artifacts so callers can budget.
-
----
-
-# A2A Use Cases
-
-| Use case | Why A2A fits |
-|---|---|
-| Vendor-built specialist agents | Collaborate without sharing source. |
-| Cross-team agents inside a company | Each team owns its stack. |
-| Marketplaces of agents | Agent Card = marketplace listing. |
-| Long-running, human-in-the-loop | Native lifecycle for `input-required` and async. |
-| Multi-modal hand-offs | Pass image → vision agent → structured artifact. |
-
----
-
-# MCP vs. A2A at a Glance
-
-| Aspect | MCP | A2A |
-|---|---|---|
-| Connects | LLM app ↔ tools | Agent ↔ agent |
-| Granularity | Fine: 1 tool = 1 function | Coarse: skills span turns |
-| Caller | Model in a host | An agent client |
-| State | Mostly stateless | Stateful tasks |
-| Discovery | List APIs at session start | Agent Card at well-known URL |
-| Transport | stdio or Streamable HTTP | HTTP with JSON-RPC, REST, or gRPC bindings |
-
----
-
-# How They Stack
+### Demo prompts
 
 ```
-[ User ]
-   │
-[ Host application + LLM ]
-   │  speaks MCP to tools
-   ├──► [ MCP server: filesystem ]
-   ├──► [ MCP server: postgres  ]
-   └──► [ MCP server: "delegate to agent" ]
-            │  speaks A2A
-            ├──► [ Remote agent: travel ]
-            └──► [ Remote agent: expenses ]
-                    └── uses MCP internally
+What's on the library's featured shelf?
+Find me books on distributed systems.
+Who has overdue books right now?
+Show me Jamal Carter's account. (his id is S-1002)
+Check out "Domain-Driven Design" for student S-1003.
 ```
 
-**MCP**: how an agent uses tools.
-**A2A**: how an agent uses another agent.
+Notice that:
+
+- The **resource browser** in Copilot's MCP panel lists `library://catalog/featured`,
+  `library://policies`, `library://catalog/index`, and the UI resource
+  `ui://component/student-dashboard.html`.
+- `check_out_book` triggers a **confirmation prompt** because of its
+  `destructiveHint` annotation.
+- The `get_student_account` tool returns `structuredContent` *and*
+  `_meta.ui.resourceUri` pointing at the dashboard widget — hosts that render
+  MCP Apps will show the dashboard inline.
 
 ---
 
-<!-- _class: lead -->
+## Connect from Claude Desktop (optional)
 
-# Putting It Together
-
----
-
-# Which Protocol Do I Build?
-
-Ask, in order:
-
-1. Tool/data source for hosts you don't own? → **MCP server**.
-2. Self-contained agent for other agents to call? → **A2A agent**.
-3. Building the host? → **Consume both**.
-4. One-shot internal feature for one app? → **Maybe neither** yet.
-
-Use protocols when you need **portability, decoupling, or third-party reach**.
-
----
-
-# Capstone Design Exercise
-
-Sketch for your project:
-
-1. One **MCP server** exposing your app's data + actions to an LLM (3–5 tools, 0–3 resources).
-2. *(Optional)* One **A2A skill** other agents could delegate to you.
-3. The **trust model**: who authenticates, what scopes, what is destructive.
-
-Bring it to next class.
-
----
-
-<!-- _class: lead -->
-
-# Live Demo
-
-DePaul Library — MCP + MCP App + A2A
-
----
-
-# What the Demo Contains
-
-`demo-library-mcp/` in the lectures repo — all three layers, one fake catalog.
-
-- **MCP server** (stdio): `search_books`, `get_student_account`, `list_overdue`, `check_out_book` + 4 resources.
-- **MCP App**: student dashboard at `ui://component/student-dashboard.html`, referenced by `_meta.ui.resourceUri`.
-- **A2A agent**: Agent Card at `/.well-known/agent-card.json`; skill `build_reading_list` over JSON-RPC.
-- Shared **fake data layer** — same domain, two interfaces.
-- Smoke test + MCP Inspector launcher included.
-
----
-
-# Connecting the Demo to Copilot
-
-Drop this in `.vscode/mcp.json`, reload, switch Copilot Chat to **Agent** mode:
+Edit `claude_desktop_config.json` (location varies by OS — see Anthropic's docs):
 
 ```json
 {
-  "servers": {
+  "mcpServers": {
     "depaul-library": {
-      "type": "stdio",
       "command": "node",
-      "args": ["${workspaceFolder}/demo-library-mcp/mcp-server.js"]
+      "args": ["C:/Users/you/.../lectures_v2/demo-library-mcp/mcp-server.js"]
     }
   }
 }
 ```
 
-Then try: *"What's on the featured shelf?"* · *"Who has overdue books?"* · *"Check out DDD for S-1003."*
+Restart Claude Desktop. The four tools should appear in the tools panel and
+resources should be browsable.
 
 ---
 
-# Key Takeaways
+## Try the MCP App rendering
 
-- LLM apps are **orchestrators** of tools and agents — not monoliths.
-- **MCP** = LLM ↔ tools/data. Small set of well-defined primitives.
-- **A2A** = agent ↔ agent. Coarse skills, explicit task lifecycle.
-- The hard parts are **auth, safety, confirmation UX**.
-- Treat tool descriptions and Agent Cards as **product surface**.
-- **Pin the protocol version** — both specs evolved rapidly in 2024–2025.
-- Use SDKs. Use the Inspector. Test before shipping.
+The student-dashboard widget lives at `apps/student-dashboard.html`. To see
+how it looks on its own (without an MCP host):
+
+```powershell
+start apps\student-dashboard.html
+```
+
+It will render with built-in fallback demo data so the visualization works
+standalone. In a real host, the host injects the tool's `structuredContent`
+into the iframe (e.g., via `window.openai.toolOutput`) and the widget reads
+that instead.
+
+### Host compatibility notes (late 2025 → early 2026)
+
+MCP Apps rendering is the **fastest-moving** part of this whole stack. As of
+the latest checks:
+
+- **ChatGPT** (Apps SDK) renders MCP App widgets natively. Built directly on
+  MCP; uses both `_meta.ui.resourceUri` and the legacy alias
+  `_meta["openai/outputTemplate"]`.
+- **VS Code / GitHub Copilot** — inline MCP App rendering has been rolling out;
+  current support varies by build. The server provides the UI resource so it
+  shows up either way; non-rendering hosts still get the plain text + structured
+  content from the same tool call. That's the "graceful degradation" pattern.
+- **Claude Desktop** — does not render MCP Apps inline at time of writing.
+  HTML resources are listed and can be opened, not inlined.
+
+When in doubt, design tools to be useful **without** the UI. The widget is a
+bonus, not the contract.
 
 ---
 
-# Further Reading
+## Try the A2A agent
 
-- **MCP** — `modelcontextprotocol.io`, official spec + SDKs.
-- **MCP Inspector** — `github.com/modelcontextprotocol/inspector`.
-- **A2A** — `a2a-protocol.org`, Linux Foundation A2A project.
-- Anthropic / GitHub / OpenAI engineering blogs on host-side MCP.
+Start the A2A server in one terminal:
+
+```powershell
+npm run a2a
+```
+
+Then, from another terminal, fetch the Agent Card:
+
+```powershell
+curl http://localhost:7042/.well-known/agent-card.json | jq .
+```
+
+Send a task to the `build_reading_list` skill:
+
+```powershell
+$body = @{
+  jsonrpc='2.0'; id=1; method='message/send';
+  params=@{ message=@{ role='user'; parts=@(@{ kind='text'; text='Build me a reading list on distributed systems for a grad seminar.' }) } }
+} | ConvertTo-Json -Depth 6 -Compress
+
+Invoke-RestMethod -Uri http://localhost:7042/ -Method Post -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 8
+```
+
+You will get back a completed `Task` with one `Artifact` containing:
+
+- A `text` part (human-readable reading list)
+- A `data` part (machine-readable JSON)
+
+Then fetch the same task by id:
+
+```powershell
+$id = "<paste the task id from above>"
+$body = @{ jsonrpc='2.0'; id=2; method='tasks/get'; params=@{ id=$id } } | ConvertTo-Json -Depth 6 -Compress
+Invoke-RestMethod -Uri http://localhost:7042/ -Method Post -ContentType 'application/json' -Body $body | ConvertTo-Json -Depth 8
+```
+
+This is enough A2A to discuss every concept on the slides: **Agent Card,
+Skill, Task lifecycle, Message / Part, Artifact**, all using the JSON-RPC
+binding.
 
 ---
 
-<!-- _class: lead -->
+## How it maps to the lecture
 
-# Questions?
+| Concept from Week 9 | Where in this repo |
+|---|---|
+| **MCP server** with tools | `mcp-server.js` → `server.registerTool(...)` |
+| **MCP server** with resources | `mcp-server.js` → `server.registerResource(...)` |
+| **stdio transport** | `mcp-server.js` → `new StdioServerTransport()` |
+| **Tool descriptions written for an LLM** | The `description` strings in `mcp-server.js` |
+| **Destructive tool annotation** | `check_out_book` → `annotations.destructiveHint: true` |
+| **MCP App / UI resource** | `apps/student-dashboard.html` + the `ui://component/...` resource |
+| **MCP App linkage** | `get_student_account` returns `_meta.ui.resourceUri` |
+| **A2A Agent Card** | `GET /.well-known/agent-card.json` in `a2a-server.js` |
+| **A2A JSON-RPC binding** | `POST /` with `message/send` and `tasks/get` |
+| **A2A Task → Artifact** | `a2a-server.js` → `newTask(...)` |
+| **Fake data layer (separation of concerns)** | `data/library.js` — same data, two interfaces |
 
-### Reflection
-*Pick one host (Claude Code / Copilot / ChatGPT) and one external system you actually use. If you had a week to build the MCP server, what would the first three tools be — and which would be destructive vs. read-only?*
+---
+
+## Troubleshooting
+
+- **"Cannot find module '@modelcontextprotocol/sdk/...'"** — run `npm install`
+  in this directory.
+- **Copilot doesn't see the server** — check the absolute path in your
+  `mcp.json`, then run `npm run smoke` to confirm the server starts cleanly.
+- **Port 7042 already in use** — set `A2A_PORT=NNNN` before `npm run a2a`.
+- **`check_out_book` always succeeds twice in a row** — state is in-memory.
+  Restart the MCP server to reset the catalog.
+
+---
+
+## What this demo deliberately leaves out
+
+So you know where the surface is thin:
+
+- **No OAuth.** The MCP server is stdio (implicit auth) and the A2A server is
+  unauthenticated. A real deployment would use OAuth 2.1 (MCP HTTP) and a
+  declared security scheme in the Agent Card.
+- **No persistence.** All state lives in process memory.
+- **No real agent logic.** The A2A "agent" doesn't call an LLM — it parses
+  text with regex. That keeps the focus on the protocol shape.
+- **No streaming.** Both servers return whole responses. Production-grade
+  versions would stream long tool results and long tasks.
+
+These are exactly the dimensions you'd extend in a capstone build.

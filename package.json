@@ -1,0 +1,18 @@
+{
+  "name": "depaul-library-demo",
+  "version": "0.1.0",
+  "description": "CSC 394 Week 9 demo: an MCP server + MCP App + A2A agent backed by a fake DePaul library catalog.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mcp": "node mcp-server.js",
+    "a2a": "node a2a-server.js",
+    "smoke": "node scripts/smoke-test.js",
+    "inspect": "npx --yes @modelcontextprotocol/inspector node mcp-server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "express": "^4.21.1",
+    "zod": "^3.23.8"
+  }
+}
